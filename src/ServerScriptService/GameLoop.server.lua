@@ -8,6 +8,7 @@ local Remotes       = require(ReplicatedStorage.Remotes)
 
 local ARENA_CENTER  = Vector3.new(0, 4, 0)
 local PREGAME_DELAY = 3
+local GRACE_PERIOD  = 10  -- seconds after round start before any bullets spawn
 local gameRunning   = false
 local gameStartTime = 0
 
@@ -25,26 +26,33 @@ local function giveUnicycle(character)
 		return
 	end
 
-	local model    = template:Clone()
-	model.Name     = "Unicycle"
-
-	-- Parent first so parts are in the workspace simulation,
-	-- then position, then weld — WeldConstraints only activate
-	-- when both parts are already in the DataModel.
+	local model  = template:Clone()
+	model.Name   = "Unicycle"
 	model.Parent = character
+
+	-- Adjust this number if the unicycle sits too high or low on the character
 	model:PivotTo(hrp.CFrame * CFrame.new(0, -2.5, 0))
 
-	local welded = 0
+	-- Pass 1: disable physics on every part before any weld is created
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
 		part.Massless   = true
 		part.CanCollide = false
 		part.Anchored   = false
-		local w  = Instance.new("WeldConstraint")
-		w.Part0  = hrp
-		w.Part1  = part
-		w.Parent = part
-		welded  += 1
+	end
+
+	-- Pass 2: weld each part to HRP using an explicit offset Weld
+	-- (more reliable than WeldConstraint for player-made models)
+	local welded = 0
+	for _, part in model:GetDescendants() do
+		if not part:IsA("BasePart") then continue end
+		local weld  = Instance.new("Weld")
+		weld.Part0  = hrp
+		weld.Part1  = part
+		weld.C0     = hrp.CFrame:Inverse() * part.CFrame
+		weld.C1     = CFrame.new()
+		weld.Parent = hrp
+		welded     += 1
 	end
 	print("[UniPsycho] Unicycle attached to", character.Name, "—", welded, "parts welded")
 end
@@ -136,7 +144,7 @@ local function runGame()
 	-- Schedule each spawner to unlock after its delay
 	for _, spawner in SPAWNERS do
 		local s = spawner
-		task.delay(s.unlockAt, function()
+		task.delay(s.unlockAt + GRACE_PERIOD, function()
 			if not gameRunning then return end
 			print("[UniPsycho] +" .. s.type .. " unlocked at t=" .. s.unlockAt .. "s")
 
