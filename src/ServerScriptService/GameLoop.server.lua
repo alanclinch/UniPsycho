@@ -30,20 +30,23 @@ local function giveUnicycle(character)
 	model.Name   = "Unicycle"
 	model.Parent = character
 
-	-- Translate every part by the same offset so the model ends up below
-	-- the character. Using CFrame + vector moves position only — no rotation
-	-- is applied, so the model keeps its upright orientation from Studio.
-	-- Adjust the -2.5 if the unicycle sits too high or low.
-	local offset = (hrp.Position + Vector3.new(0, -2.5, 0)) - model:GetPivot().Position
+	-- Position below the character AND face the same direction as the player.
+	-- Adjust Y_OFFSET if the wheel is buried (more positive = higher up).
+	local Y_OFFSET  = -1.5
+	local targetPos = hrp.Position + Vector3.new(0, Y_OFFSET, 0)
+	local look      = Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z)
+	if look.Magnitude < 0.01 then look = Vector3.new(0, 0, -1) end
+	model:PivotTo(CFrame.lookAt(targetPos, targetPos + look.Unit))
+
+	-- Pass 1: disable physics
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
-		part.CFrame     = part.CFrame + offset
 		part.Massless   = true
 		part.CanCollide = false
 		part.Anchored   = false
 	end
 
-	-- Weld every part to HRP, capturing the current relative offset
+	-- Pass 2: weld to HRP
 	local welded = 0
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
