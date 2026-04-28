@@ -1,15 +1,15 @@
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage     = game:GetService("ServerStorage")
 
 local BulletManager = require(script.Parent.BulletManager)
 local Remotes       = require(ReplicatedStorage.Remotes)
 
 local ARENA_CENTER  = Vector3.new(0, 4, 0)
-local WAVE_DURATION = 30
-local BETWEEN_WAVES = 5
 local PREGAME_DELAY = 3
 local gameRunning   = false
+local gameStartTime = 0
 
 -- Unicycle model --------------------------------------------------------
 local function giveUnicycle(character)
@@ -19,58 +19,30 @@ local function giveUnicycle(character)
 	local existing = character:FindFirstChild("Unicycle")
 	if existing then existing:Destroy() end
 
-	local model    = Instance.new("Model")
+	local template = ServerStorage:FindFirstChild("Unicycle")
+	if not template then
+		warn("[UniPsycho] Put your Unicycle model in ServerStorage named 'Unicycle'")
+		return
+	end
+
+	local model    = template:Clone()
 	model.Name     = "Unicycle"
 
-	-- Wheel: Roblox Cylinder axis runs along X by default, so with no
-	-- rotation this is already a vertical disc — correct for a wheel.
-	local wheel          = Instance.new("Part")
-	wheel.Name           = "Wheel"
-	wheel.Size           = Vector3.new(0.35, 2.4, 2.4)  -- thin disc, 1.2 stud radius
-	wheel.Shape          = Enum.PartType.Cylinder
-	wheel.BrickColor     = BrickColor.new("Really black")
-	wheel.Material       = Enum.Material.SmoothPlastic
-	wheel.Massless       = true
-	wheel.CanCollide     = false
-	wheel.CastShadow     = false
-	wheel.CFrame         = hrp.CFrame * CFrame.new(0, -2.2, 0)  -- at foot level
-	wheel.Parent         = model
-	local ww             = Instance.new("WeldConstraint")
-	ww.Part0             = hrp
-	ww.Part1             = wheel
-	ww.Parent            = wheel
+	-- Move the whole model below the character before welding so the
+	-- WeldConstraints capture the correct relative offsets.
+	-- Adjust the Y offset here if the model sits too high or low.
+	model:PivotTo(hrp.CFrame * CFrame.new(0, -2.5, 0))
 
-	-- Seat post: thin rod from wheel axle up to the seat
-	local post           = Instance.new("Part")
-	post.Name            = "Post"
-	post.Size            = Vector3.new(0.15, 1.6, 0.15)
-	post.BrickColor      = BrickColor.new("Medium stone grey")
-	post.Material        = Enum.Material.Metal
-	post.Massless        = true
-	post.CanCollide      = false
-	post.CastShadow      = false
-	post.CFrame          = hrp.CFrame * CFrame.new(0, -1.3, 0)
-	post.Parent          = model
-	local wp             = Instance.new("WeldConstraint")
-	wp.Part0             = hrp
-	wp.Part1             = post
-	wp.Parent            = post
-
-	-- Seat: small flat block just below HRP
-	local seat           = Instance.new("Part")
-	seat.Name            = "Seat"
-	seat.Size            = Vector3.new(0.9, 0.15, 0.4)
-	seat.BrickColor      = BrickColor.new("Dark grey")
-	seat.Material        = Enum.Material.SmoothPlastic
-	seat.Massless        = true
-	seat.CanCollide      = false
-	seat.CastShadow      = false
-	seat.CFrame          = hrp.CFrame * CFrame.new(0, -0.5, 0)
-	seat.Parent          = model
-	local ws             = Instance.new("WeldConstraint")
-	ws.Part0             = hrp
-	ws.Part1             = seat
-	ws.Parent            = seat
+	for _, part in model:GetDescendants() do
+		if not part:IsA("BasePart") then continue end
+		part.Massless   = true
+		part.CanCollide = false
+		part.Anchored   = false
+		local w  = Instance.new("WeldConstraint")
+		w.Part0  = hrp
+		w.Part1  = part
+		w.Parent = part
+	end
 
 	model.Parent = character
 end
@@ -81,7 +53,6 @@ local function removeUnicycle(character)
 end
 -- -----------------------------------------------------------------------
 
--- Kill the character server-side when their balance hits 0
 Remotes.PlayerFell.OnServerEvent:Connect(function(player)
 	local char = player.Character
 	if char then
@@ -90,7 +61,6 @@ Remotes.PlayerFell.OnServerEvent:Connect(function(player)
 	end
 end)
 
--- Give unicycle + signal any player who respawns mid-round
 local function onCharacterAdded(player, character)
 	if not gameRunning then return end
 	task.delay(0.5, function()
@@ -102,38 +72,38 @@ local function onCharacterAdded(player, character)
 end
 
 Players.PlayerAdded:Connect(function(player)
-	player.CharacterAdded:Connect(function(char)
-		onCharacterAdded(player, char)
-	end)
+	player.CharacterAdded:Connect(function(char) onCharacterAdded(player, char) end)
 end)
 for _, plr in Players:GetPlayers() do
-	plr.CharacterAdded:Connect(function(char)
-		onCharacterAdded(plr, char)
-	end)
+	plr.CharacterAdded:Connect(function(char) onCharacterAdded(plr, char) end)
 end
 
--- Wave definitions ------------------------------------------------------
--- edgeWave:   wall of bullets marching in from one side (angle rotates each fire)
--- perimAimed: bullet per player from a random edge point, aimed at them
--- spiralEdge: rotating arms from the perimeter sweeping inward
-local WAVES = {
-	{   -- Wave 1: slow wall warmup
-		{ type = "edgeWave", count = 7,  interval = 2.2, color = "Bright red"    },
-	},
-	{   -- Wave 2: walls + tracking
-		{ type = "edgeWave",   count = 9,  interval = 1.8, color = "Bright orange" },
-		{ type = "perimAimed",             interval = 1.3, color = "Bright yellow" },
-	},
-	{   -- Wave 3: 4-arm spiral + tracking
-		{ type = "spiralEdge", arms = 4,   interval = 0.20, color = "Hot pink" },
-		{ type = "perimAimed",             interval = 1.0,  color = "Cyan"     },
-	},
-	{   -- Wave 4: fast 6-arm spiral + wall barrage + tracking
-		{ type = "spiralEdge", arms = 6,   interval = 0.13, color = "Lime green" },
-		{ type = "edgeWave",   count = 12, interval = 1.3,  color = "Bright red" },
-		{ type = "perimAimed",             interval = 0.7,  color = "White"      },
-	},
+-- Vampire Survivors-style spawner table --------------------------------
+-- Spawners unlock at `unlockAt` seconds into the round.
+-- All intervals shrink over time so everything accelerates continuously.
+local SPAWNERS = {
+	-- t=0:   one slow aimed bullet — the whole game starts with just this
+	{ unlockAt =   0, type = "perimAimed",              baseInterval = 4.0, color = "Bright red"    },
+	-- t=25:  a wall of 5 bullets from one edge
+	{ unlockAt =  25, type = "edgeWave",   count =  5,  baseInterval = 4.0, color = "Bright orange" },
+	-- t=50:  second aimed bullet stream (different color so players can read them)
+	{ unlockAt =  50, type = "perimAimed",              baseInterval = 3.0, color = "Bright yellow" },
+	-- t=80:  3-arm spiral sweeping inward from the perimeter
+	{ unlockAt =  80, type = "spiralEdge", arms  =  3,  baseInterval = 0.28, color = "Hot pink"     },
+	-- t=110: bigger edge wave
+	{ unlockAt = 110, type = "edgeWave",   count =  9,  baseInterval = 3.0, color = "Cyan"          },
+	-- t=140: 5-arm spiral
+	{ unlockAt = 140, type = "spiralEdge", arms  =  5,  baseInterval = 0.18, color = "Lime green"   },
+	-- t=170: dense wall
+	{ unlockAt = 170, type = "edgeWave",   count = 14,  baseInterval = 2.2, color = "Bright red"    },
+	-- t=200: fast 7-arm spiral — near-endgame chaos
+	{ unlockAt = 200, type = "spiralEdge", arms  =  7,  baseInterval = 0.10, color = "White"        },
 }
+
+-- Interval scales to 15% of base over ~8 minutes so the game keeps accelerating
+local function scaledInterval(base, elapsed)
+	return math.max(base * 0.15, base * (1 - elapsed / 500))
+end
 
 local function countAlivePlayers()
 	local n = 0
@@ -146,76 +116,64 @@ local function countAlivePlayers()
 	return n
 end
 
-local function runWave(waveDef)
-	local connections = {}
-	local height      = ARENA_CENTER.Y + 1
-
-	for _, pattern in waveDef do
-		local timer       = 0
-		local spiralAngle = 0
-		local waveAngle   = math.random() * 2 * math.pi
-
-		local conn = RunService.Heartbeat:Connect(function(dt)
-			timer -= dt
-			if timer > 0 then return end
-			timer = pattern.interval
-
-			if pattern.type == "edgeWave" then
-				BulletManager.SpawnEdgeWave(ARENA_CENTER, pattern.count, waveAngle, height, pattern.color)
-				waveAngle += math.pi / 5
-			elseif pattern.type == "perimAimed" then
-				BulletManager.SpawnPerimeterAimed(ARENA_CENTER, height, pattern.color)
-			elseif pattern.type == "spiralEdge" then
-				BulletManager.SpawnSpiralEdge(ARENA_CENTER, pattern.arms, spiralAngle, height, pattern.color)
-				spiralAngle += math.pi / 12
-			end
-		end)
-
-		table.insert(connections, conn)
-	end
-
-	return function()
-		for _, c in connections do c:Disconnect() end
-		BulletManager.ClearAll()
-	end
-end
-
 local function runGame()
-	gameRunning = true
+	gameRunning   = true
+	gameStartTime = tick()
+
 	print("[UniPsycho] Starting in " .. PREGAME_DELAY .. "s…")
 	task.wait(PREGAME_DELAY)
 
-	-- Mount everyone on their unicycles
 	for _, plr in Players:GetPlayers() do
 		local char = plr.Character
 		if char then giveUnicycle(char) end
 	end
 	Remotes.GameStarted:FireAllClients()
 
-	for waveIndex, waveDef in WAVES do
-		print("[UniPsycho] Wave " .. waveIndex)
-		local stopWave = runWave(waveDef)
+	local activeConns = {}
 
-		local elapsed = 0
-		while elapsed < WAVE_DURATION do
-			task.wait(0.5)
-			elapsed += 0.5
-			if countAlivePlayers() == 0 then break end
-		end
-		stopWave()
+	-- Schedule each spawner to unlock after its delay
+	for _, spawner in SPAWNERS do
+		local s = spawner
+		task.delay(s.unlockAt, function()
+			if not gameRunning then return end
+			print("[UniPsycho] +" .. s.type .. " unlocked at t=" .. s.unlockAt .. "s")
 
-		if countAlivePlayers() == 0 then
-			print("[UniPsycho] Everyone eliminated on wave " .. waveIndex)
-			break
-		end
+			local timer       = 0
+			local spiralAngle = math.random() * 2 * math.pi
+			local waveAngle   = math.random() * 2 * math.pi
+			local height      = ARENA_CENTER.Y + 1
 
-		if waveIndex < #WAVES then
-			print("[UniPsycho] Wave " .. waveIndex .. " cleared! Next in " .. BETWEEN_WAVES .. "s…")
-			task.wait(BETWEEN_WAVES)
-		else
-			print("[UniPsycho] All waves cleared — you win!")
-		end
+			local conn = RunService.Heartbeat:Connect(function(dt)
+				if not gameRunning then return end
+				local elapsed = tick() - gameStartTime
+				timer -= dt
+				if timer > 0 then return end
+				timer = scaledInterval(s.baseInterval, elapsed)
+
+				if s.type == "perimAimed" then
+					BulletManager.SpawnPerimeterAimed(ARENA_CENTER, height, s.color)
+				elseif s.type == "edgeWave" then
+					BulletManager.SpawnEdgeWave(ARENA_CENTER, s.count, waveAngle, height, s.color)
+					waveAngle += math.pi / 5
+				elseif s.type == "spiralEdge" then
+					BulletManager.SpawnSpiralEdge(ARENA_CENTER, s.arms, spiralAngle, height, s.color)
+					spiralAngle += math.pi / 12
+				end
+			end)
+
+			table.insert(activeConns, conn)
+		end)
 	end
+
+	-- Run until everyone is dead
+	while countAlivePlayers() > 0 do
+		task.wait(0.5)
+	end
+
+	-- Stop everything before any pending task.delays fire new spawners
+	gameRunning = false
+	for _, c in activeConns do c:Disconnect() end
+	BulletManager.ClearAll()
 
 	Remotes.GameEnded:FireAllClients()
 	for _, plr in Players:GetPlayers() do
@@ -223,8 +181,7 @@ local function runGame()
 		if char then removeUnicycle(char) end
 	end
 
-	print("[UniPsycho] Restarting in 10s…")
-	gameRunning = false
+	print("[UniPsycho] Game over. Restarting in 10s…")
 	task.wait(10)
 end
 
