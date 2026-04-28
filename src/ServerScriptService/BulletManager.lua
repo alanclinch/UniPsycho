@@ -3,12 +3,13 @@ local Players    = game:GetService("Players")
 
 local BulletManager = {}
 
-local SPEED      = 28     -- studs/s
-local DAMAGE     = 34     -- HP per hit
-local LIFETIME   = 6      -- seconds before auto-destroy
-local HIT_RADIUS = 2.5    -- studs
+local SPEED       = 28
+local DAMAGE      = 34
+local LIFETIME    = 8
+local HIT_RADIUS  = 2.5
+local SPAWN_RADIUS = 55  -- just outside the 45-stud arena edge
 
-local bullets = {}  -- { part: Part, vel: Vector3, expireAt: number }
+local bullets = {}
 
 local function spawn(origin, direction, color)
 	local part          = Instance.new("Part")
@@ -29,36 +30,53 @@ local function spawn(origin, direction, color)
 	}
 end
 
--- Even ring of `count` bullets fired from center at `height`
-function BulletManager.SpawnRadial(center, count, height, color)
+-- Wall of bullets marching in from one edge of the arena.
+-- `angle` picks which edge; rotate it each call for variety.
+function BulletManager.SpawnEdgeWave(center, count, angle, height, color)
+	local inward  = Vector3.new(-math.cos(angle), 0, -math.sin(angle))
+	local perp    = Vector3.new(-math.sin(angle), 0,  math.cos(angle))
+	local edgePos = Vector3.new(
+		center.X + math.cos(angle) * SPAWN_RADIUS,
+		height,
+		center.Z + math.sin(angle) * SPAWN_RADIUS
+	)
 	for i = 1, count do
-		local a   = (2 * math.pi / count) * (i - 1)
-		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
-		spawn(Vector3.new(center.X, height, center.Z), dir, color)
+		local offset = (i - (count + 1) / 2) * 5
+		spawn(edgePos + perp * offset, inward, color)
 	end
 end
 
--- One bullet per living player, aimed from center
-function BulletManager.SpawnAimed(center, height, color)
+-- One bullet per player, spawned from a random edge point aimed at that player.
+function BulletManager.SpawnPerimeterAimed(center, height, color)
 	for _, plr in Players:GetPlayers() do
 		local char = plr.Character
 		if not char then continue end
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		if not hrp then continue end
-		local origin = Vector3.new(center.X, height, center.Z)
-		local dir    = Vector3.new(hrp.Position.X, height, hrp.Position.Z) - origin
+		local a      = math.random() * 2 * math.pi
+		local origin = Vector3.new(
+			center.X + math.cos(a) * SPAWN_RADIUS,
+			height,
+			center.Z + math.sin(a) * SPAWN_RADIUS
+		)
+		local dir = Vector3.new(hrp.Position.X, height, hrp.Position.Z) - origin
 		if dir.Magnitude > 0.1 then
 			spawn(origin, dir.Unit, color)
 		end
 	end
 end
 
--- `arms` bullets rotated by `angleOffset`, used repeatedly to form a spiral
-function BulletManager.SpawnSpiral(center, arms, angleOffset, height, color)
+-- Rotating arms from the perimeter all moving inward — call repeatedly with
+-- increasing angleOffset to produce a spiral sweeping across the arena.
+function BulletManager.SpawnSpiralEdge(center, arms, angleOffset, height, color)
 	for i = 1, arms do
-		local a   = (2 * math.pi / arms) * (i - 1) + angleOffset
-		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
-		spawn(Vector3.new(center.X, height, center.Z), dir, color)
+		local a      = (2 * math.pi / arms) * (i - 1) + angleOffset
+		local origin = Vector3.new(
+			center.X + math.cos(a) * SPAWN_RADIUS,
+			height,
+			center.Z + math.sin(a) * SPAWN_RADIUS
+		)
+		spawn(origin, Vector3.new(-math.cos(a), 0, -math.sin(a)), color)
 	end
 end
 
@@ -69,13 +87,11 @@ function BulletManager.ClearAll()
 	table.clear(bullets)
 end
 
--- Move bullets and proximity-check hits every frame
 RunService.Heartbeat:Connect(function(dt)
 	local now = tick()
 	local i   = 1
 	while i <= #bullets do
 		local b = bullets[i]
-
 		if not b.part.Parent or now >= b.expireAt then
 			if b.part.Parent then b.part:Destroy() end
 			table.remove(bullets, i)
@@ -100,9 +116,7 @@ RunService.Heartbeat:Connect(function(dt)
 			end
 		end
 
-		if not hit then
-			i += 1
-		end
+		if not hit then i += 1 end
 	end
 end)
 
