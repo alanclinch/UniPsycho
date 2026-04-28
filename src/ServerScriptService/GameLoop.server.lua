@@ -22,36 +22,55 @@ local function giveUnicycle(character)
 	local model    = Instance.new("Model")
 	model.Name     = "Unicycle"
 
+	-- Wheel: Roblox Cylinder axis runs along X by default, so with no
+	-- rotation this is already a vertical disc — correct for a wheel.
 	local wheel          = Instance.new("Part")
 	wheel.Name           = "Wheel"
-	wheel.Size           = Vector3.new(0.4, 2.2, 2.2)
+	wheel.Size           = Vector3.new(0.35, 2.4, 2.4)  -- thin disc, 1.2 stud radius
 	wheel.Shape          = Enum.PartType.Cylinder
 	wheel.BrickColor     = BrickColor.new("Really black")
 	wheel.Material       = Enum.Material.SmoothPlastic
 	wheel.Massless       = true
 	wheel.CanCollide     = false
 	wheel.CastShadow     = false
-	wheel.CFrame         = hrp.CFrame * CFrame.new(0, -2.8, 0) * CFrame.Angles(0, 0, math.pi / 2)
+	wheel.CFrame         = hrp.CFrame * CFrame.new(0, -2.2, 0)  -- at foot level
 	wheel.Parent         = model
 	local ww             = Instance.new("WeldConstraint")
 	ww.Part0             = hrp
 	ww.Part1             = wheel
 	ww.Parent            = wheel
 
+	-- Seat post: thin rod from wheel axle up to the seat
 	local post           = Instance.new("Part")
 	post.Name            = "Post"
-	post.Size            = Vector3.new(0.18, 2.4, 0.18)
+	post.Size            = Vector3.new(0.15, 1.6, 0.15)
 	post.BrickColor      = BrickColor.new("Medium stone grey")
 	post.Material        = Enum.Material.Metal
 	post.Massless        = true
 	post.CanCollide      = false
 	post.CastShadow      = false
-	post.CFrame          = hrp.CFrame * CFrame.new(0, -1.4, 0)
+	post.CFrame          = hrp.CFrame * CFrame.new(0, -1.3, 0)
 	post.Parent          = model
 	local wp             = Instance.new("WeldConstraint")
 	wp.Part0             = hrp
 	wp.Part1             = post
 	wp.Parent            = post
+
+	-- Seat: small flat block just below HRP
+	local seat           = Instance.new("Part")
+	seat.Name            = "Seat"
+	seat.Size            = Vector3.new(0.9, 0.15, 0.4)
+	seat.BrickColor      = BrickColor.new("Dark grey")
+	seat.Material        = Enum.Material.SmoothPlastic
+	seat.Massless        = true
+	seat.CanCollide      = false
+	seat.CastShadow      = false
+	seat.CFrame          = hrp.CFrame * CFrame.new(0, -0.5, 0)
+	seat.Parent          = model
+	local ws             = Instance.new("WeldConstraint")
+	ws.Part0             = hrp
+	ws.Part1             = seat
+	ws.Parent            = seat
 
 	model.Parent = character
 end
