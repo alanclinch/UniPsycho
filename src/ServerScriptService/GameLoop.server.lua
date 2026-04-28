@@ -30,8 +30,10 @@ local function giveUnicycle(character)
 	model.Name   = "Unicycle"
 	model.Parent = character
 
-	-- Adjust this number if the unicycle sits too high or low on the character
-	model:PivotTo(hrp.CFrame * CFrame.new(0, -2.5, 0))
+	-- Position below the character without applying HRP's rotation, so the
+	-- model keeps its own upright orientation from Studio.
+	-- Adjust the -2.5 number if the unicycle sits too high or low.
+	model:PivotTo(CFrame.new(hrp.Position + Vector3.new(0, -2.5, 0)))
 
 	-- Pass 1: disable physics on every part before any weld is created
 	for _, part in model:GetDescendants() do
