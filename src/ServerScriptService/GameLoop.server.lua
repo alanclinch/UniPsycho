@@ -28,11 +28,13 @@ local function giveUnicycle(character)
 	local model    = template:Clone()
 	model.Name     = "Unicycle"
 
-	-- Move the whole model below the character before welding so the
-	-- WeldConstraints capture the correct relative offsets.
-	-- Adjust the Y offset here if the model sits too high or low.
+	-- Parent first so parts are in the workspace simulation,
+	-- then position, then weld — WeldConstraints only activate
+	-- when both parts are already in the DataModel.
+	model.Parent = character
 	model:PivotTo(hrp.CFrame * CFrame.new(0, -2.5, 0))
 
+	local welded = 0
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
 		part.Massless   = true
@@ -42,9 +44,9 @@ local function giveUnicycle(character)
 		w.Part0  = hrp
 		w.Part1  = part
 		w.Parent = part
+		welded  += 1
 	end
-
-	model.Parent = character
+	print("[UniPsycho] Unicycle attached to", character.Name, "—", welded, "parts welded")
 end
 
 local function removeUnicycle(character)
