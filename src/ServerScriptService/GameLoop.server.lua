@@ -30,21 +30,20 @@ local function giveUnicycle(character)
 	model.Name   = "Unicycle"
 	model.Parent = character
 
-	-- Position below the character without applying HRP's rotation, so the
-	-- model keeps its own upright orientation from Studio.
-	-- Adjust the -2.5 number if the unicycle sits too high or low.
-	model:PivotTo(CFrame.new(hrp.Position + Vector3.new(0, -2.5, 0)))
-
-	-- Pass 1: disable physics on every part before any weld is created
+	-- Translate every part by the same offset so the model ends up below
+	-- the character. Using CFrame + vector moves position only — no rotation
+	-- is applied, so the model keeps its upright orientation from Studio.
+	-- Adjust the -2.5 if the unicycle sits too high or low.
+	local offset = (hrp.Position + Vector3.new(0, -2.5, 0)) - model:GetPivot().Position
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
+		part.CFrame     = part.CFrame + offset
 		part.Massless   = true
 		part.CanCollide = false
 		part.Anchored   = false
 	end
 
-	-- Pass 2: weld each part to HRP using an explicit offset Weld
-	-- (more reliable than WeldConstraint for player-made models)
+	-- Weld every part to HRP, capturing the current relative offset
 	local welded = 0
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
