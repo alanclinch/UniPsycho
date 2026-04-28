@@ -30,15 +30,25 @@ local function giveUnicycle(character)
 	model.Name   = "Unicycle"
 	model.Parent = character
 
-	-- Position below the character AND face the same direction as the player.
-	-- Adjust Y_OFFSET if the wheel is buried (more positive = higher up).
+	-- Requires a PrimaryPart to be set on the Unicycle model in Studio.
+	-- The PrimaryPart should be the main frame/body, facing -Z (blue arrow away from you).
+	-- Adjust Y_OFFSET so the wheel just touches the ground.
 	local Y_OFFSET  = -1.5
-	local targetPos = hrp.Position + Vector3.new(0, Y_OFFSET, 0)
-	local look      = Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z)
+	local primary   = model.PrimaryPart
+	if not primary then
+		warn("[UniPsycho] Set a PrimaryPart on the Unicycle model in Studio (right-click a part → Set as PrimaryPart)")
+		primary = model:FindFirstChildWhichIsA("BasePart", true)
+		if not primary then model:Destroy() return end
+	end
+
+	local look = Vector3.new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z)
 	if look.Magnitude < 0.01 then look = Vector3.new(0, 0, -1) end
+
+	-- Place the PrimaryPart just below HRP, facing the same direction as the player
+	local targetPos = hrp.Position + Vector3.new(0, Y_OFFSET, 0)
 	model:PivotTo(CFrame.lookAt(targetPos, targetPos + look.Unit))
 
-	-- Pass 1: disable physics
+	-- Disable physics on all parts, then weld each to HRP
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
 		part.Massless   = true
@@ -46,7 +56,6 @@ local function giveUnicycle(character)
 		part.Anchored   = false
 	end
 
-	-- Pass 2: weld to HRP
 	local welded = 0
 	for _, part in model:GetDescendants() do
 		if not part:IsA("BasePart") then continue end
