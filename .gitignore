@@ -1,0 +1,11 @@
+# Roblox place files — use Rojo to sync instead
+*.rbxl
+*.rbxl.lock
+*.rbxlx
+
+# Rojo session lock
+*.lock
+
+# OS
+.DS_Store
+Thumbs.db
